@@ -1,18 +1,21 @@
-# 📦 ETHAIM — Product Search Relevance Benchmark & Bi-Encoder Fine-Tuning Pipeline
 
-This repository implements a **full end-to-end pipeline** for benchmarking, training, and comparing embedding-based models for **product search relevance** on the ETHAIM dataset.
+# 📦 ETHAIM — Product Search Relevance Benchmark & Bi-Encoder Fine-Tuning Pipeline  
+*(Updated: now includes Interactive Search + LLM-as-Judge Evaluation)*
 
-It supports:
-- Data preparation & splitting  
-- Baseline evaluation (HuggingFace + API models)  
-- Fine-tuning bi-encoders with MultipleNegativesRankingLoss  
-- Full offline ranking evaluation  
-- Model comparison by accuracy, speed, and architecture  
-- Real-time interactive search demo  
+This repository implements a **full end-to-end pipeline** for benchmarking, training, evaluating, and comparing embedding-based models for **e-commerce product search** on the ETHAIM dataset.
+
+It contains tooling for:
+- Data preparation  
+- Baseline model evaluation (HF + API models)  
+- Fine-tuning bi-encoders (E5, BGE, GTE, etc.)  
+- Ranking evaluation (Hit@K, MRR, NDCG)  
+- Model speed & architecture analysis  
+- **Interactive search demo**  
+- **LLM-as-Judge model-vs-model relevance comparison**  
 
 ---
 
-# 📁 Project Structure
+# 📁 Project Structure (Updated)
 
 ```
 project/
@@ -24,27 +27,30 @@ project/
 │   └── raw_embedding_file.parquet
 │
 ├── models/
-│   └── <exp_name>/                  # saved fine-tuned models
+│   └── <exp_name>/                 # fine-tuned models
 │
 ├── results/
-│   └── <exp_name>/                  # metrics, plots, examples
+│   └── <exp_name>/                 # evaluation output
+│
+├── interactive_outputs/
+│   └── <model_name>/
+│         <query>.txt               # search results stored here
 │
 ├── model_analysis/
 │   └── model_speed_and_architecture.csv
 │
-├── src/
-│   ├── split_dataset.py
-│   ├── train_biencoder.py
-│   ├── eval_biencoder.py
-│   ├── eval_api_embeddings.py
-│   ├── eval_hf_embeddings.py
-│   ├── analyse_models.py
-│   ├── interactive_search.py
-│   ├── baseline_embeddings.py
-│   ├── explore_embeddings.py
-│   └── check_gpu.py
-│
-└── README.md
+└── src/
+    ├── split_dataset.py
+    ├── train_biencoder.py
+    ├── eval_biencoder.py
+    ├── eval_hf_embeddings.py
+    ├── eval_api_embeddings.py
+    ├── analyse_models.py
+    ├── interactive_search.py       # NEW
+    ├── eval_with_llm_judge.py      # NEW
+    ├── baseline_embeddings.py
+    ├── explore_embeddings.py
+    └── check_gpu.py
 ```
 
 ---
@@ -53,7 +59,7 @@ project/
 
 ```
 python -m venv env
-env/Scripts/activate        # Windows
+env/Scripts/activate
 pip install -r requirements.txt
 ```
 
@@ -77,32 +83,15 @@ Ensures:
 - Balanced languages  
 - Balanced frequencies  
 
-Output stored in `data/`.
-
 ---
 
 # 🧪 2. Baseline Evaluation (HuggingFace Models)
 
-Evaluate any HF embedding model:
-
 ```
 python src/eval_hf_embeddings.py ^
-  --model_name sentence-transformers/all-MiniLM-L6-v2 ^
-  --exp_name minilm_baseline
+  --model_name intfloat/multilingual-e5-base ^
+  --exp_name e5_base_baseline
 ```
-
-Output in:
-
-```
-results/minilm_baseline/
-```
-
-Includes:
-- metrics.json  
-- metrics.csv  
-- examples.json  
-- per_query_metrics.csv  
-- metrics_overview.png  
 
 ---
 
@@ -114,13 +103,7 @@ OpenAI:
 python src/eval_api_embeddings.py ^
   --provider openai ^
   --model text-embedding-3-large ^
-  --exp_name openai_large
-```
-
-Set key:
-
-```
-setx OPENAI_API_KEY "xxxx"
+  --exp_name openai_te3_large
 ```
 
 Google:
@@ -129,14 +112,12 @@ Google:
 python src/eval_api_embeddings.py ^
   --provider google ^
   --model models/embedding-001 ^
-  --exp_name google_emb01
+  --exp_name google_embed01
 ```
 
 ---
 
 # 🎓 4. Fine-Tuning Bi-Encoders
-
-Train a HuggingFace model:
 
 ```
 python src/train_biencoder.py ^
@@ -144,16 +125,6 @@ python src/train_biencoder.py ^
   --exp_name e5_finetuned ^
   --epochs 1 ^
   --batch_size 256
-```
-
-For models needing remote code:
-
-```
-python src/train_biencoder.py ^
-  --model_name Alibaba-NLP/gte-multilingual-base ^
-  --exp_name gte_finetuned ^
-  --trust_remote_code ^
-  --epochs 1
 ```
 
 Models saved to:
@@ -174,92 +145,66 @@ python src/eval_biencoder.py ^
 
 ---
 
-# 📊 6. Model Analysis (Speed + Architecture + Metrics)
-
-Runs once after all evaluations:
+# 📊 6. Model Analysis (Speed + Architecture)
 
 ```
 python src/analyse_models.py
 ```
 
-Produces:
+Outputs:
 
 ```
 model_analysis/model_speed_and_architecture.csv
 ```
 
-Contains:
-- hit@k  
-- mrr  
-- ndcg  
-- parameters  
-- embedding size  
-- layers  
-- throughput (queries/sec)  
-
 ---
 
-# 🔍 7. Real-Time Interactive Search Demo
-
-Use any HF or fine-tuned model:
+# 🔍 7. Interactive Real-Time Search Demo (NEW)
 
 ```
 python src/interactive_search.py ^
   --model_name_or_path models/e5_finetuned ^
-  --data_file data/test.parquet ^
-  --top_k 5
+  --data_file data/unique_products.parquet ^
+  --top_k 100
 ```
 
-Example:
+Outputs saved to:
 
 ```
-Enter a search query: schlafsack
-→ shows top-5 products
+interactive_outputs/<model_name>/<query>.txt
 ```
 
 ---
 
-# 🧠 Metrics Explained
-
-| Metric | Meaning |
-|--------|---------|
-| **Hit@1** | correct item is rank 1 |
-| **Hit@5** | correct item is in top 5 |
-| **MRR@10** | earlier relevant = higher score |
-| **NDCG@10** | full-quality ranking metric |
-
----
-
-# 🛠 Add New Model (Example)
-
-Train BGE:
+# 🤖 8. LLM-as-Judge — Model-vs-Model Comparison (NEW)
 
 ```
-python src/train_biencoder.py ^
-  --model_name BAAI/bge-base-en-v1.5 ^
-  --exp_name bge_finetuned
+python src/eval_with_llm_judge.py ^
+  --file_a "interactive_outputs/e5_finetuned/blackdress.txt" ^
+  --file_b "interactive_outputs/bge-base-en-v1.5/blackdress.txt" ^
+  --label_a e5 ^
+  --label_b bge ^
+  --query "black dress"
 ```
 
-Evaluate:
+Produces:
 
 ```
-python src/eval_biencoder.py ^
-  --model_name_or_path models/bge_finetuned ^
-  --exp_name bge_finetuned_eval
+results/llm_judgements/judge_blackdress.json
 ```
 
 ---
 
 # ✔️ Summary
 
-This project provides:
+This project now includes:
 
-- Complete dataset preparation  
-- Baseline model benchmarks  
+- Dataset preparation  
+- Baseline evaluations  
 - Fine-tuning pipeline  
-- Evaluation tooling  
-- Model comparison  
-- Real-time product search demo  
+- Detailed evaluation  
+- Interactive search  
+- LLM-as-Judge comparison  
+- Speed + architecture analysis  
 
-Perfect for production experiments or research.
-
+Perfect for research & production experimentation.
