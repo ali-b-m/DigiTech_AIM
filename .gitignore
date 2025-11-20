@@ -12,3 +12,4 @@ models/
 results/
 model_analysis/
 env/
+src/train_e5_contrastive.py
