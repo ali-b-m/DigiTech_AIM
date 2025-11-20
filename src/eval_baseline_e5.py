@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 from typing import List
-import random
+from tqdm import tqdm
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,21 +23,26 @@ def encode_texts(model, texts: List[str]) -> np.ndarray:
 
 
 def ndcg_at_k(relevances: np.ndarray, k: int = 10) -> float:
-    """Compute NDCG@k for a ranking."""
+    """Compute NDCG@k."""
     relevances = relevances[:k]
     if relevances.sum() == 0:
         return 0.0
+
     dcg = 0.0
     for i, rel in enumerate(relevances):
         dcg += rel / np.log2(i + 2)
+
     ideal = np.sort(relevances)[::-1]
     idcg = 0.0
     for i, rel in enumerate(ideal):
         idcg += rel / np.log2(i + 2)
+
     return dcg / idcg if idcg > 0 else 0.0
 
 
 def main():
+    print(">>> RUNNING NEW eval_baseline_e5 WITH PROGRESS BAR <<<")
+
     print("Loading test data from:", TEST_FILE)
     df = pd.read_parquet(TEST_FILE)
     print("Total test rows:", len(df))
@@ -66,9 +71,11 @@ def main():
     # Load model
     model_name = "intfloat/multilingual-e5-base"
     print("Loading model:", model_name)
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(model_name, device="cuda")
 
     grouped = df.groupby("OriginalQuery")
+    group_items = list(grouped)
+    total_groups = len(group_items)
 
     # Metrics
     hit1 = 0
@@ -76,13 +83,13 @@ def main():
     hit10 = 0
     mrr10 = 0
     ndcg10 = 0
-
     total_used = 0
+
     example_queries = []
 
-    print("\nEvaluating... (this may take some minutes)")
+    print("\nEvaluating with progress bar...\n")
 
-    for q, group in grouped:
+    for q, group in tqdm(group_items, total=total_groups, desc="Processing queries"):
         if group["relevant"].sum() == 0:
             continue
 
@@ -94,6 +101,7 @@ def main():
         product_texts = group["product_text_prefixed"].tolist()
         labels = group["relevant"].to_numpy()
 
+        # Encode
         query_emb = encode_texts(model, [query_text])[0]
         product_embs = encode_texts(model, product_texts)
         scores = product_embs @ query_emb
@@ -133,11 +141,11 @@ def main():
     print(f"NDCG@10: {ndcg10:.4f}")
     print("======================================\n")
 
-    # Show example predictions
-    print("========== EXAMPLE QUERIES ==========")
+    # Example predictions
+    print("========== EXAMPLE QUERIES ==========\n")
 
     for (query, group) in example_queries:
-        print(f"\nQuery: {query}")
+        print(f"Query: {query}")
         query_text = "query: " + query
         product_texts = group["product_text_prefixed"].tolist()
         labels = group["relevant"].to_numpy()
@@ -150,11 +158,12 @@ def main():
         for rank in range(min(5, len(product_texts))):
             idx = ranked_idx[rank]
             print(
-                f"  #{rank + 1}: {product_texts[idx][:60]:60} | "
-                f"score={scores[idx]:.3f} | relevant={labels[idx]}"
+                f"  #{rank + 1}: {product_texts[idx][:60]:60} "
+                f"| score={scores[idx]:.3f} | relevant={labels[idx]}"
             )
+        print("--------------------------------------\n")
 
-    print("\n======================================\n")
+    print("======================================\n")
 
 
 if __name__ == "__main__":
